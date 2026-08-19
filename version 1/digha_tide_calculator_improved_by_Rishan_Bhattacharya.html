@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Digha Tide Station — Data-Fitted Harmonic Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0E2233;
+    --navy2:#153148;
+    --paper:#F1E8D2;
+    --paper-line:#d9cca4;
+    --teal:#3E7C7C;
+    --gold:#C9A15C;
+    --rust:#B5443B;
+    --ink:#22303f;
+    --ink-soft:#5b6a78;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--navy);
+    background-image:
+      radial-gradient(ellipse at 20% -10%, #1c3b56 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 0%, #1a3450 0%, transparent 50%);
+    color:var(--paper);
+    font-family:'Spectral', Georgia, serif;
+    min-height:100vh;
+    padding:28px 16px 60px;
+  }
+  .page{max-width:960px;margin:0 auto;}
+
+  header.station{
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;
+    border-bottom:1px solid rgba(201,161,92,0.35);
+    padding-bottom:18px; margin-bottom:22px;
+  }
+  .station-name{
+    font-size:clamp(28px,4vw,42px); font-weight:700; letter-spacing:0.5px; color:var(--paper);
+    margin:0;
+  }
+  .station-sub{
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--gold);
+    letter-spacing:1.5px; text-transform:uppercase; margin-top:6px;
+  }
+  .coords{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9fb3c4;
+    text-align:right; line-height:1.6;
+  }
+
+  .controls{
+    display:flex; align-items:center; gap:14px; margin-bottom:22px; flex-wrap:wrap;
+  }
+  .controls label{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;}
+  .controls input[type=date]{
+    background:var(--navy2); color:var(--paper); border:1px solid rgba(201,161,92,0.5);
+    padding:8px 10px; border-radius:3px; font-family:'IBM Plex Mono',monospace; font-size:14px;
+  }
+  .moonbadge{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; color:#c7d4de;
+    display:flex; align-items:center; gap:8px; margin-left:auto;
+  }
+  .moonbadge .glyph{font-size:18px;}
+
+  .panel{
+    background:var(--paper); color:var(--ink); border-radius:6px;
+    padding:22px 24px; margin-bottom:20px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.35);
+    position:relative;
+    background-image:
+      repeating-linear-gradient(to bottom, rgba(90,70,30,0.05) 0, rgba(90,70,30,0.05) 1px, transparent 1px, transparent 26px);
+  }
+  .panel h2{
+    font-size:14px; text-transform:uppercase; letter-spacing:1.5px; color:var(--teal);
+    margin:0 0 14px 0; font-family:'IBM Plex Mono',monospace; font-weight:600;
+    border-bottom:1px solid var(--paper-line); padding-bottom:8px;
+  }
+
+  #chartWrap{position:relative;}
+  svg#tideChart{width:100%; height:auto; display:block; cursor:crosshair;}
+  .axis-label{font-family:'IBM Plex Mono',monospace; font-size:10.5px; fill:var(--ink-soft);}
+  .grid-line{stroke:var(--paper-line); stroke-width:1;}
+  .zero-line{stroke:#a0906b; stroke-width:1; stroke-dasharray:3 3;}
+  .curve{fill:none; stroke:var(--teal); stroke-width:2.4;}
+  .curve-fill{fill:url(#waterGrad);}
+  .extreme-dot{fill:var(--rust); stroke:var(--paper); stroke-width:1.5;}
+  .extreme-label{font-family:'IBM Plex Mono',monospace; font-size:11px; fill:var(--ink); font-weight:600;}
+  .crosshair{stroke:var(--gold); stroke-width:1; stroke-dasharray:4 3;}
+  .cross-dot{fill:var(--navy); stroke:var(--gold); stroke-width:2;}
+
+  .tooltip{
+    position:absolute; pointer-events:none; background:var(--navy); color:var(--paper);
+    font-family:'IBM Plex Mono',monospace; font-size:12px; padding:6px 10px; border-radius:4px;
+    border:1px solid var(--gold); white-space:nowrap; transform:translate(-50%,-115%);
+    opacity:0; transition:opacity 0.1s;
+  }
+
+  table{width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:13px;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--paper-line);}
+  th{color:var(--teal); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:0.8px;}
+  td.hi{color:var(--rust); font-weight:600;}
+  td.lo{color:#2e6b8a; font-weight:600;}
+
+  .astro-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:16px;}
+  .astro-card{background:rgba(62,124,124,0.08); border:1px solid var(--paper-line); border-radius:5px; padding:14px 16px;}
+  .astro-card .label{font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; color:var(--ink-soft); letter-spacing:1px;}
+  .astro-card .value{font-size:20px; font-weight:600; margin-top:4px; font-family:'Spectral',serif;}
+
+  .formula{
+    font-family:'IBM Plex Mono',monospace; font-size:14px; background:var(--navy);
+    color:var(--paper); padding:14px 16px; border-radius:5px; margin-bottom:16px; overflow-x:auto;
+  }
+  .formula .accent{color:var(--gold);}
+
+  .note{font-size:13px; color:var(--ink-soft); line-height:1.6; margin-top:10px;}
+  .note strong{color:var(--ink);}
+
+  footer.disclaimer{
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#93a7b7; line-height:1.7;
+    border-top:1px solid rgba(201,161,92,0.3); padding-top:16px; margin-top:8px;
+  }
+  footer.disclaimer strong{color:var(--gold);}
+
+  @media (max-width:600px){
+    .coords{text-align:left;}
+    header.station{flex-direction:column; align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="station">
+    <div>
+      <p class="station-name">Digha Tide Station</p>
+      <p class="station-sub">Data-Fitted Harmonic Predictor · Bay of Bengal</p>
+      <p class="station-sub" style="margin-top:8px; color:#c7d4de; letter-spacing:1px; text-transform:none;">Created by Rishan Bhattacharya</p>
+    </div>
+    <div class="coords">21.627° N, 87.501° E<br>Height datum: source Tidechart values<br>Time zone: IST (UTC +5:30)</div>
+  </header>
+
+  <div class="controls">
+    <label for="datePick">Date</label>
+    <input type="date" id="datePick" value="2026-10-12">
+    <div class="moonbadge"><span class="glyph" id="moonGlyph">🌕</span><span id="moonText">—</span></div>
+  </div>
+
+  <div class="panel" id="chartPanel">
+    <h2 id="chartTitle">Predicted Water Level — 12 October 2026</h2>
+    <div id="chartWrap">
+      <svg id="tideChart" viewBox="0 0 900 340" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3E7C7C" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#3E7C7C" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        <g id="gridGroup"></g>
+        <path id="curveFill" class="curve-fill" d=""></path>
+        <path id="curveLine" class="curve" d=""></path>
+        <g id="extremaGroup"></g>
+        <g id="crosshairGroup" style="display:none;">
+          <line id="crossV" class="crosshair" x1="0" y1="0" x2="0" y2="280"></line>
+          <circle id="crossDot" class="cross-dot" r="4.5"></circle>
+        </g>
+      </svg>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+    <p class="note">Hover or tap the trace to read the predicted level at any moment. Red points mark predicted high and low water.</p>
+  </div>
+
+  <div class="panel">
+    <h2>High &amp; Low Water — Selected Day</h2>
+    <table id="eventsTable">
+      <thead><tr><th>Event</th><th>Time (IST)</th><th>Height</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Astronomical Data</h2>
+    <div class="astro-grid">
+      <div class="astro-card"><div class="label">Sunrise</div><div class="value" id="sunrise">—</div></div>
+      <div class="astro-card"><div class="label">Sunset</div><div class="value" id="sunset">—</div></div>
+      <div class="astro-card"><div class="label">Moon Phase</div><div class="value" id="moonPhase">—</div></div>
+      <div class="astro-card"><div class="label">Moon Illumination</div><div class="value" id="moonIllum">—</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>The Harmonic Model</h2>
+    <div class="formula">η(t) = Z<span class="accent">₀</span> + Σᵢ H<span class="accent">ᵢ</span> · cos(ω<span class="accent">ᵢ</span>t − g<span class="accent">ᵢ</span>)</div>
+    <table>
+      <thead><tr><th>Constituent</th><th>Origin</th><th>Speed ω (°/hr)</th><th>Amplitude H (m)</th><th>Phase g (°)</th></tr></thead>
+      <tbody id="constituentTable"></tbody>
+    </table>
+    <p class="note">
+      <strong>Method:</strong> this version fits a frequency-constrained harmonic model directly to the
+      high/low <em>times and heights</em> in the supplied Digha tide table. Amplitudes and phases are estimated by
+      least squares; they are not manually entered. The model is then extrapolated to the selected date.<br><br>
+      <strong>Important:</strong> the supplied source contains only tidal extrema, not continuous sea-level observations.
+      Therefore this is an <em>empirical harmonic extrapolation</em>, not a certified astronomical tide prediction.
+      A continuous 30+ day tide-gauge record would be needed for professional harmonic constants.
+    </p>
+  </div>
+
+
+  <div class="panel">
+    <h2>Calibration &amp; Model Diagnostics</h2>
+    <div class="astro-grid">
+      <div class="astro-card"><div class="label">Source extrema</div><div class="value" id="dataCount">—</div></div>
+      <div class="astro-card"><div class="label">Calibration span</div><div class="value" id="dataSpan">—</div></div>
+      <div class="astro-card"><div class="label">Selected model</div><div class="value" id="modelName">—</div></div>
+      <div class="astro-card"><div class="label">Fit RMSE</div><div class="value" id="fitRmse">—</div></div>
+      <div class="astro-card"><div class="label">LOO-CV RMSE</div><div class="value" id="cvRmse">—</div></div>
+      <div class="astro-card"><div class="label">Prediction class</div><div class="value" id="predictionClass">—</div></div>
+    </div>
+    <p class="note" id="modelNote"></p>
+  </div>
+
+  <footer class="disclaimer">
+    <strong>Approximation only — not for navigation.</strong> This model is fitted to reported high/low extrema rather than continuous tide-gauge observations. Real tides are also affected by wind, atmospheric pressure, river discharge and storm surge —
+    none of which this model includes. For safety-critical use, consult Survey of India / INCOIS / Indian National Hydrographic Office
+    tide tables.
+  </footer>
+
+</div>
+
+<script>
+// ============================================================================
+// DIGHA EMPIRICAL HARMONIC TIDE PREDICTOR
+// ============================================================================
+//
+// IMPORTANT:
+// The supplied source is a Tidechart high/low table, not continuous tide-gauge
+// observations. We therefore fit the harmonic coefficients to the reported
+// extrema themselves. This is the best data-driven extrapolation possible from
+// the available source, but it is NOT a professional astronomical prediction.
+//
+// Calibration data visible in the user's supplied screenshot:
+// 19–28 August 2026, 38 high/low extrema.
+//
+// Model:
+//     eta(t) = Z0 + Σ [a_i cos(w_i t) + b_i sin(w_i t)]
+//
+// Frequencies are fixed astronomical constituent frequencies.
+// a_i and b_i are estimated from the supplied data using least squares.
+// No artificial "+50 min/day" rule is used.
+//
+// ============================================================================
+
+const LAT = 21.627;
+const LON = 87.501;
+const IST_HOURS = 5.5;
+
+// Fit epoch: exactly 2026-08-19 00:00 IST.
+const EPOCH = Date.UTC(2026, 7, 18, 18, 30, 0);
+
+// Source extrema from the supplied Digha Tidechart screenshot.
+// type: +1 = high water, -1 = low water.
+const calibrationData = [
+  ["2026-08-19","02:02", 2.70,  1],
+  ["2026-08-19","08:33", 0.33, -1],
+  ["2026-08-19","14:17", 2.63,  1],
+  ["2026-08-19","20:55", 0.37, -1],
+
+  ["2026-08-20","02:44", 2.40,  1],
+  ["2026-08-20","09:10", 0.62, -1],
+  ["2026-08-20","14:58", 2.32,  1],
+  ["2026-08-20","21:37", 0.62, -1],
+
+  ["2026-08-21","03:44", 2.11,  1],
+  ["2026-08-21","09:59", 0.91, -1],
+  ["2026-08-21","16:06", 2.04,  1],
+  ["2026-08-21","22:35", 0.83, -1],
+
+  ["2026-08-22","05:40", 1.95,  1],
+  ["2026-08-22","11:16", 1.11, -1],
+  ["2026-08-22","18:10", 1.91,  1],
+
+  ["2026-08-23","00:12", 0.93, -1],
+  ["2026-08-23","07:23", 2.04,  1],
+  ["2026-08-23","13:32", 1.10, -1],
+  ["2026-08-23","19:39", 2.02,  1],
+
+  ["2026-08-24","02:05", 0.77, -1],
+  ["2026-08-24","08:27", 2.26,  1],
+  ["2026-08-24","14:52", 0.84, -1],
+  ["2026-08-24","20:36", 2.24,  1],
+
+  ["2026-08-25","03:04", 0.50, -1],
+  ["2026-08-25","09:11", 2.51,  1],
+  ["2026-08-25","15:34", 0.55, -1],
+  ["2026-08-25","21:17", 2.48,  1],
+
+  ["2026-08-26","03:43", 0.22, -1],
+  ["2026-08-26","09:44", 2.76,  1],
+  ["2026-08-26","16:07", 0.27, -1],
+  ["2026-08-26","21:50", 2.73,  1],
+
+  ["2026-08-27","04:17",-0.04, -1],
+  ["2026-08-27","10:13", 2.98,  1],
+  ["2026-08-27","16:39", 0.01, -1],
+  ["2026-08-27","22:18", 2.96,  1],
+
+  ["2026-08-28","04:50",-0.26, -1],
+  ["2026-08-28","10:38", 3.18,  1],
+  ["2026-08-28","17:10",-0.21, -1]
+].map(([date,time,height,type]) => ({date,time,height,type}));
+
+// Standard constituent speeds, degrees/hour.
+// We intentionally do NOT try to estimate too many constituents from only
+// ten days of extrema. The candidate set below is small enough to remain
+// identifiable while still representing the dominant semidiurnal/diurnal
+// structure and a shallow-water overtide.
+const ALL_CONSTITUENTS = {
+  M2:  {origin:"Principal lunar semidiurnal", speed:28.9841042},
+  S2:  {origin:"Principal solar semidiurnal", speed:30.0000000},
+  N2:  {origin:"Larger lunar elliptic", speed:28.4397295},
+  K1:  {origin:"Lunisolar diurnal", speed:15.0410686},
+  O1:  {origin:"Principal lunar diurnal", speed:13.9430356},
+  M4:  {origin:"Shallow-water overtide of M2", speed:57.9682084}
+};
+
+// Candidate models. We select by leave-one-day-out cross-validation rather
+// than simply choosing the model with the smallest in-sample error.
+const MODEL_CANDIDATES = [
+  ["M2","S2"],
+  ["M2","S2","N2"],
+  ["M2","S2","N2","M4"],
+  ["M2","S2","N2","K1","O1"],
+  ["M2","S2","N2","K1","O1","M4"]
+];
+
+let selectedModel = null;
+let fitted = null;
+
+// ---------- Time utilities ----------
+function dateTimeToMs(dateStr, timeStr){
+  const [y,m,d] = dateStr.split("-").map(Number);
+  const [hh,mm] = timeStr.split(":").map(Number);
+  return Date.UTC(y,m-1,d,hh,mm,0) - IST_HOURS*3600000;
+}
+
+function hoursFromEpoch(ms){
+  return (ms - EPOCH)/3600000;
+}
+
+function eventRows(){
+  return calibrationData.map(e => ({
+    ...e,
+    ms: dateTimeToMs(e.date,e.time),
+    t: hoursFromEpoch(dateTimeToMs(e.date,e.time))
+  }));
+}
+
+const DATA = eventRows();
+
+// ---------- Linear algebra: Householder QR least squares ----------
+// Solves min ||Ax-y||_2 without forming X'X, which is numerically safer.
+function leastSquaresQR(A, y){
+  const m=A.length, n=A[0].length;
+  const R=A.map(row=>row.slice());
+  const qy=y.slice();
+
+  for(let k=0;k<n;k++){
+    let norm=0;
+    for(let i=k;i<m;i++) norm=Math.hypot(norm,R[i][k]);
+    if(norm < 1e-12) continue;
+
+    const sign = R[k][k] >= 0 ? 1 : -1;
+    const alpha = -sign*norm;
+
+    const v = new Array(m-k).fill(0);
+    for(let i=k;i<m;i++) v[i-k]=R[i][k];
+    v[0] -= alpha;
+
+    let vnorm=0;
+    for(const z of v) vnorm=Math.hypot(vnorm,z);
+    if(vnorm < 1e-14) continue;
+    for(let i=0;i<v.length;i++) v[i]/=vnorm;
+
+    for(let j=k;j<n;j++){
+      let dot=0;
+      for(let i=k;i<m;i++) dot += v[i-k]*R[i][j];
+      for(let i=k;i<m;i++) R[i][j] -= 2*v[i-k]*dot;
+    }
+
+    let dotY=0;
+    for(let i=k;i<m;i++) dotY += v[i-k]*qy[i];
+    for(let i=k;i<m;i++) qy[i] -= 2*v[i-k]*dotY;
+
+    R[k][k]=alpha;
+    for(let i=k+1;i<m;i++) R[i][k]=0;
+  }
+
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){
+    let s=qy[i];
+    for(let j=i+1;j<n;j++) s-=R[i][j]*x[j];
+    x[i]=Math.abs(R[i][i])<1e-12 ? 0 : s/R[i][i];
+  }
+  return x;
+}
+
+// ---------- Harmonic design matrix ----------
+// beta = [Z0, a_M2, b_M2, a_S2, b_S2, ...]
+function basis(t,names){
+  const row=[1];
+  for(const name of names){
+    const w=ALL_CONSTITUENTS[name].speed*Math.PI/180;
+    row.push(Math.cos(w*t),Math.sin(w*t));
+  }
+  return row;
+}
+
+function derivativeBasis(t,names){
+  const row=[0];
+  for(const name of names){
+    const w=ALL_CONSTITUENTS[name].speed*Math.PI/180;
+    row.push(-w*Math.sin(w*t),w*Math.cos(w*t));
+  }
+  return row;
+}
+
+function fit(names, data){
+  const A=data.map(e=>basis(e.t,names));
+  const y=data.map(e=>e.height);
+  const beta=leastSquaresQR(A,y);
+
+  const residuals=data.map((e,i)=> {
+    let p=0;
+    const b=A[i];
+    for(let j=0;j<beta.length;j++) p+=b[j]*beta[j];
+    return e.height-p;
+  });
+
+  const mean=y.reduce((a,b)=>a+b,0)/y.length;
+  const sse=residuals.reduce((s,e)=>s+e*e,0);
+  const sst=y.reduce((s,e)=>s+(e-mean)*(e-mean),0);
+  const rmse=Math.sqrt(sse/y.length);
+  const r2=sst>0 ? 1-sse/sst : 0;
+
+  return {names,beta,rmse,r2,residuals};
+}
+
+function predict(t, model){
+  const b=basis(t,model.names);
+  return b.reduce((s,x,i)=>s+x*model.beta[i],0);
+}
+
+function derivative(t, model){
+  const b=derivativeBasis(t,model.names);
+  return b.reduce((s,x,i)=>s+x*model.beta[i],0);
+}
+
+// ---------- Leave-one-day-out model selection ----------
+function dayKey(ms){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Kolkata"}).format(new Date(ms));
+}
+
+function selectModel(){
+  const days=[...new Set(DATA.map(e=>dayKey(e.ms)))];
+  const scores=[];
+
+  for(const names of MODEL_CANDIDATES){
+    let sq=0,n=0;
+
+    for(const day of days){
+      const train=DATA.filter(e=>dayKey(e.ms)!==day);
+      const test=DATA.filter(e=>dayKey(e.ms)===day);
+      const model=fit(names,train);
+
+      for(const e of test){
+        const err=predict(e.t,model)-e.height;
+        sq+=err*err; n++;
+      }
+    }
+
+    const cvRmse=Math.sqrt(sq/n);
+    const full=fit(names,DATA);
+    scores.push({names,cvRmse,full});
+  }
+
+  scores.sort((a,b)=>a.cvRmse-b.cvRmse);
+  return scores[0];
+}
+
+const chosen=selectModel();
+selectedModel=chosen.names;
+fitted=chosen.full;
+
+// ---------- Convert a_i,b_i into amplitude/phase ----------
+function harmonicConstants(model){
+  const result=[];
+  let idx=1;
+
+  for(const name of model.names){
+    const a=model.beta[idx], b=model.beta[idx+1];
+    const amp=Math.hypot(a,b);
+    let phase=Math.atan2(-b,a)*180/Math.PI;
+    if(phase<0) phase+=360;
+
+    result.push({
+      name,
+      origin:ALL_CONSTITUENTS[name].origin,
+      speed:ALL_CONSTITUENTS[name].speed,
+      amplitude:amp,
+      phase
+    });
+
+    idx+=2;
+  }
+  return result;
+}
+
+// ---------- High/low detection ----------
+// First bracket derivative zeroes at one-minute resolution, then refine with
+// bisection. This is more accurate than simply picking the largest sampled
+// height.
+function findExtrema(dateStr, model){
+  const [y,m,d]=dateStr.split("-").map(Number);
+  const start=Date.UTC(y,m-1,d,0,0,0)-IST_HOURS*3600000;
+  const end=start+24*3600000;
+  const step=60*1000;
+  const roots=[];
+
+  function derivAt(ms){return derivative(hoursFromEpoch(ms),model);}
+
+  let prev=start, fprev=derivAt(prev);
+
+  for(let ms=start+step; ms<=end; ms+=step){
+    const f=derivAt(ms);
+
+    if(fprev===0 || f*fprev<0){
+      let lo=prev, hi=ms, flo=fprev;
+      for(let k=0;k<45;k++){
+        const mid=(lo+hi)/2;
+        const fm=derivAt(mid);
+        if(flo*fm<=0){hi=mid;} else {lo=mid; flo=fm;}
+      }
+      const root=(lo+hi)/2;
+
+      if(!roots.length || Math.abs(root-roots[roots.length-1])>5*60*1000){
+        roots.push(root);
+      }
+    }
+
+    prev=ms; fprev=f;
+  }
+
+  return roots.map(ms=>{
+    const t=hoursFromEpoch(ms);
+    const eps=1/3600; // one second in hours
+    const second=(derivative(t+eps,model)-derivative(t-eps,model))/(2*eps);
+    return {
+      ms,
+      t,
+      height:predict(t,model),
+      type:second<0 ? "high":"low"
+    };
+  });
+}
+
+// ---------- Sun calculations ----------
+function sunTimes(year, month, day){
+  const d0=Date.UTC(year,0,1);
+  const dCur=Date.UTC(year,month-1,day);
+  const N=Math.round((dCur-d0)/86400000)+1;
+  const gamma=2*Math.PI/365*(N-1+12/24);
+  const eqtime=229.18*(0.000075+0.001868*Math.cos(gamma)-0.032077*Math.sin(gamma)
+    -0.014615*Math.cos(2*gamma)-0.040849*Math.sin(2*gamma));
+  const decl=0.006918-0.399912*Math.cos(gamma)+0.070257*Math.sin(gamma)
+    -0.006758*Math.cos(2*gamma)+0.000907*Math.sin(2*gamma)
+    -0.002697*Math.cos(3*gamma)+0.00148*Math.sin(3*gamma);
+  const latRad=LAT*Math.PI/180;
+  const cosH=(Math.cos(90.833*Math.PI/180)/(Math.cos(latRad)*Math.cos(decl)))
+    -Math.tan(latRad)*Math.tan(decl);
+
+  if(cosH<-1 || cosH>1) return {sunrise:null,sunset:null};
+
+  const ha=Math.acos(cosH)*180/Math.PI;
+  const solarNoonUTC=12-LON/15-eqtime/60;
+  const haHours=ha/15;
+  return {sunrise:solarNoonUTC-haHours,sunset:solarNoonUTC+haHours};
+}
+
+function hoursToISTString(hUTC){
+  if(hUTC===null) return "—";
+  let total=hUTC+5.5;
+  total=((total%24)+24)%24;
+  let hh=Math.floor(total);
+  let mm=Math.round((total-hh)*60);
+  if(mm===60){mm=0;hh=(hh+1)%24;}
+  const ampm=hh>=12?"PM":"AM";
+  let hh12=hh%12;if(hh12===0)hh12=12;
+  return `${hh12}:${String(mm).padStart(2,"0")} ${ampm}`;
+}
+
+// ---------- Moon phase ----------
+const NEW_MOON_REF=Date.UTC(2000,0,6,18,14,0);
+const SYNODIC=29.530588853;
+
+function moonPhaseInfo(dateMs){
+  const days=(dateMs-NEW_MOON_REF)/86400000;
+  let phase=(days%SYNODIC)/SYNODIC;
+  if(phase<0) phase+=1;
+  const illum=(1-Math.cos(2*Math.PI*phase))/2;
+
+  let name,glyph;
+  if(phase<0.03||phase>0.97){name="New Moon";glyph="🌑";}
+  else if(phase<0.22){name="Waxing Crescent";glyph="🌒";}
+  else if(phase<0.28){name="First Quarter";glyph="🌓";}
+  else if(phase<0.47){name="Waxing Gibbous";glyph="🌔";}
+  else if(phase<0.53){name="Full Moon";glyph="🌕";}
+  else if(phase<0.72){name="Waning Gibbous";glyph="🌖";}
+  else if(phase<0.78){name="Last Quarter";glyph="🌗";}
+  else {name="Waning Crescent";glyph="🌘";}
+
+  return {phase,illum,name,glyph};
+}
+
+// ---------- Rendering ----------
+const svgNS="http://www.w3.org/2000/svg";
+const marginL=45,marginR=20,marginT=20,marginB=40;
+const svgW=900,svgH=340;
+const plotW=svgW-marginL-marginR;
+const plotH=svgH-marginT-marginB;
+
+function niceStep(range,targetCount){
+  const raw=range/targetCount;
+  const mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  const norm=raw/mag;
+  let step;
+  if(norm<1.5)step=1;
+  else if(norm<3)step=2;
+  else if(norm<7)step=5;
+  else step=10;
+  return step*mag;
+}
+
+function fmtIST(ms){
+  return new Intl.DateTimeFormat("en-IN",{
+    hour:"numeric",minute:"2-digit",hour12:true,timeZone:"Asia/Kolkata"
+  }).format(new Date(ms));
+}
+
+function render(dateStr){
+  const [y,m,d]=dateStr.split("-").map(Number);
+  const dayStartUTC=Date.UTC(y,m-1,d,0,0,0)-IST_HOURS*3600000;
+  const dayEndUTC=dayStartUTC+24*3600000;
+
+  // Buffer is used only for smooth graph continuity.
+  const bufStart=dayStartUTC-3*3600000;
+  const bufEnd=dayEndUTC+3*3600000;
+
+  const stepMs=60*1000;
+  const samples=[];
+  for(let t=bufStart;t<=bufEnd;t+=stepMs){
+    samples.push({t,h:predict(hoursFromEpoch(t),fitted)});
+  }
+
+  const extrema=findExtrema(dateStr,fitted);
+  const dayExtrema=extrema.filter(e=>e.ms>=dayStartUTC && e.ms<=dayEndUTC);
+  const daySamples=samples.filter(s=>s.t>=dayStartUTC && s.t<=dayEndUTC);
+
+  const heights=daySamples.map(s=>s.h);
+  let hMin=Math.min(...heights,0),hMax=Math.max(...heights);
+  const pad=(hMax-hMin)*0.15||0.5;
+  hMin-=pad;hMax+=pad;
+
+  function xScale(t){return marginL+(t-dayStartUTC)/(dayEndUTC-dayStartUTC)*plotW;}
+  function yScale(h){return marginT+(1-(h-hMin)/(hMax-hMin))*plotH;}
+
+  let dLine="";
+  daySamples.forEach((s,i)=>{
+    dLine+=(i===0?"M":"L")+xScale(s.t).toFixed(2)+" "+yScale(s.h).toFixed(2)+" ";
+  });
+  const dFill=dLine+`L ${xScale(dayEndUTC).toFixed(2)} ${yScale(hMin).toFixed(2)} L ${xScale(dayStartUTC).toFixed(2)} ${yScale(hMin).toFixed(2)} Z`;
+
+  document.getElementById("curveLine").setAttribute("d",dLine);
+  document.getElementById("curveFill").setAttribute("d",dFill);
+
+  // Grid
+  const gridGroup=document.getElementById("gridGroup");
+  gridGroup.innerHTML="";
+  const hStep=niceStep(hMax-hMin,5);
+
+  for(let hv=Math.ceil(hMin/hStep)*hStep;hv<=hMax;hv+=hStep){
+    const yv=yScale(hv);
+    const line=document.createElementNS(svgNS,"line");
+    line.setAttribute("x1",marginL);line.setAttribute("x2",svgW-marginR);
+    line.setAttribute("y1",yv);line.setAttribute("y2",yv);
+    line.setAttribute("class",Math.abs(hv)<0.001?"zero-line":"grid-line");
+    gridGroup.appendChild(line);
+
+    const label=document.createElementNS(svgNS,"text");
+    label.setAttribute("x",marginL-8);label.setAttribute("y",yv+3);
+    label.setAttribute("text-anchor","end");label.setAttribute("class","axis-label");
+    label.textContent=hv.toFixed(1)+"m";
+    gridGroup.appendChild(label);
+  }
+
+  for(let hr=0;hr<=24;hr+=3){
+    const t=dayStartUTC+hr*3600000,x=xScale(t);
+    const line=document.createElementNS(svgNS,"line");
+    line.setAttribute("x1",x);line.setAttribute("x2",x);
+    line.setAttribute("y1",marginT);line.setAttribute("y2",svgH-marginB);
+    line.setAttribute("class","grid-line");
+    gridGroup.appendChild(line);
+
+    const label=document.createElementNS(svgNS,"text");
+    label.setAttribute("x",x);label.setAttribute("y",svgH-marginB+18);
+    label.setAttribute("text-anchor","middle");label.setAttribute("class","axis-label");
+    label.textContent=hr===0?"12 AM":hr===12?"12 PM":hr===24?"12 AM":`${hr%12} ${hr<12?"AM":"PM"}`;
+    gridGroup.appendChild(label);
+  }
+
+  // Extrema
+  const extGroup=document.getElementById("extremaGroup");
+  extGroup.innerHTML="";
+  dayExtrema.forEach(e=>{
+    const x=xScale(e.ms),yv=yScale(e.height);
+    const dot=document.createElementNS(svgNS,"circle");
+    dot.setAttribute("cx",x);dot.setAttribute("cy",yv);
+    dot.setAttribute("r",5);dot.setAttribute("class","extreme-dot");
+    extGroup.appendChild(dot);
+
+    const label=document.createElementNS(svgNS,"text");
+    label.setAttribute("x",x);
+    label.setAttribute("y",e.type==="high"?yv-12:yv+20);
+    label.setAttribute("text-anchor","middle");label.setAttribute("class","extreme-label");
+    label.textContent=e.height.toFixed(2)+"m";
+    extGroup.appendChild(label);
+  });
+
+  // Events table
+  const tbody=document.querySelector("#eventsTable tbody");
+  tbody.innerHTML="";
+  dayExtrema.sort((a,b)=>a.ms-b.ms).forEach(e=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="${e.type==="high"?"hi":"lo"}">${e.type==="high"?"High Water":"Low Water"}</td>
+      <td>${fmtIST(e.ms)}</td><td>${e.height.toFixed(2)} m</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Astronomy display
+  const {sunrise,sunset}=sunTimes(y,m,d);
+  document.getElementById("sunrise").textContent=hoursToISTString(sunrise);
+  document.getElementById("sunset").textContent=hoursToISTString(sunset);
+
+  const localNoonUTC=Date.UTC(y,m-1,d,12,0,0)-IST_HOURS*3600000;
+  const moon=moonPhaseInfo(localNoonUTC);
+  document.getElementById("moonPhase").textContent=moon.name;
+  document.getElementById("moonIllum").textContent=Math.round(moon.illum*100)+"%";
+  document.getElementById("moonGlyph").textContent=moon.glyph;
+  document.getElementById("moonText").textContent=moon.name;
+
+  const dateObj=new Date(Date.UTC(y,m-1,d));
+  const dateLabel=new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(dateObj);
+  document.getElementById("chartTitle").textContent=`Predicted Water Level — ${dateLabel}`;
+
+  window.__tideCtx={dayStartUTC,dayEndUTC,xScale,yScale,hMin,hMax};
+}
+
+// ---------- Harmonic-constant table ----------
+const ctBody=document.getElementById("constituentTable");
+ctBody.innerHTML="";
+const hc=harmonicConstants(fitted);
+
+hc.forEach(c=>{
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td><strong>${c.name}</strong></td>
+    <td>${c.origin}</td>
+    <td>${c.speed.toFixed(4)}</td>
+    <td>${c.amplitude.toFixed(3)}</td>
+    <td>${c.phase.toFixed(2)}°</td>`;
+  ctBody.appendChild(tr);
+});
+
+// ---------- Diagnostics ----------
+function formatModel(names){return names.join(" + ");}
+
+const allDays=[...new Set(DATA.map(e=>dayKey(e.ms)))];
+let cvSum=0,cvN=0;
+
+for(const day of allDays){
+  const train=DATA.filter(e=>dayKey(e.ms)!==day);
+  const test=DATA.filter(e=>dayKey(e.ms)===day);
+  const m=fit(selectedModel,train);
+  for(const e of test){
+    const err=predict(e.t,m)-e.height;
+    cvSum+=err*err;cvN++;
+  }
+}
+
+const cvRmse=Math.sqrt(cvSum/cvN);
+
+document.getElementById("dataCount").textContent=DATA.length+" extrema";
+document.getElementById("dataSpan").textContent="19–28 Aug 2026";
+document.getElementById("modelName").textContent=formatModel(selectedModel);
+document.getElementById("fitRmse").textContent=fitted.rmse.toFixed(3)+" m";
+document.getElementById("cvRmse").textContent=cvRmse.toFixed(3)+" m";
+document.getElementById("predictionClass").textContent="Empirical";
+
+document.getElementById("modelNote").innerHTML=
+  `<strong>Why this model?</strong> The program tested ${MODEL_CANDIDATES.length} nested constituent sets and selected
+  <strong>${formatModel(selectedModel)}</strong> because it produced the lowest leave-one-day-out validation error
+  (${cvRmse.toFixed(3)} m). The fit uses all ${DATA.length} extrema visible in the supplied screenshot.
+  Because the source is only high/low water points, the reported harmonic constants are <em>local fitted coefficients</em>,
+  not official Digha harmonic constants.`;
+
+document.getElementById("datePick").addEventListener("change",e=>render(e.target.value));
+
+// ---------- Tooltip ----------
+const svg=document.getElementById("tideChart");
+const tooltip=document.getElementById("tooltip");
+const crossGroup=document.getElementById("crosshairGroup");
+const crossV=document.getElementById("crossV");
+const crossDot=document.getElementById("crossDot");
+
+function pointerToSvgX(evt){
+  const rect=svg.getBoundingClientRect();
+  const clientX=evt.touches?evt.touches[0].clientX:evt.clientX;
+  return (clientX-rect.left)/rect.width*svgW;
+}
+
+function handleMove(evt){
+  const ctx=window.__tideCtx;
+  if(!ctx)return;
+
+  const x=pointerToSvgX(evt);
+  const clampedX=Math.max(marginL,Math.min(svgW-marginR,x));
+  const frac=(clampedX-marginL)/plotW;
+  const t=ctx.dayStartUTC+frac*(ctx.dayEndUTC-ctx.dayStartUTC);
+  const h=predict(hoursFromEpoch(t),fitted);
+  const yv=ctx.yScale(h);
+
+  crossGroup.style.display="block";
+  crossV.setAttribute("x1",clampedX);crossV.setAttribute("x2",clampedX);
+  crossV.setAttribute("y1",marginT);crossV.setAttribute("y2",svgH-marginB);
+  crossDot.setAttribute("cx",clampedX);crossDot.setAttribute("cy",yv);
+
+  tooltip.textContent=`${fmtIST(t)} — ${h.toFixed(2)} m`;
+  tooltip.style.opacity=1;
+
+  const rect=svg.getBoundingClientRect();
+  const wrapRect=document.getElementById("chartWrap").getBoundingClientRect();
+  tooltip.style.left=(rect.left-wrapRect.left+(clampedX/svgW)*rect.width)+"px";
+  tooltip.style.top=(rect.top-wrapRect.top+(yv/svgH)*rect.height)+"px";
+}
+
+svg.addEventListener("mousemove",handleMove);
+svg.addEventListener("touchmove",handleMove,{passive:true});
+svg.addEventListener("mouseleave",()=>{
+  crossGroup.style.display="none";tooltip.style.opacity=0;
+});
+svg.addEventListener("touchend",()=>{
+  crossGroup.style.display="none";tooltip.style.opacity=0;
+});
+
+render("2026-10-12");
+</script>
+</body>
+</html>
